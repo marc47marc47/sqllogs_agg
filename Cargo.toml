@@ -1,0 +1,8 @@
+[package]
+name = "sqllogs_agg"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+datafusion = "43.0.0"
+tokio = { version = "1.28", features = ["full"] }
