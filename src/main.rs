@@ -1,39 +1,59 @@
 use datafusion::prelude::*;
-//use datafusion::datasource::file_format::csv::CsvReadOptions;
-use std::sync::Arc;
 use datafusion::error::Result;
+use std::path::Path;
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 建立 DataFusion 的執行環境
-    let mut ctx = SessionContext::new();
+    // 1. 從命令列參數讀取檔案名稱
+    let args: Vec<String> = env::args().collect();
+    let input_file = if args.len() > 1 {
+        &args[1]
+    } else {
+        "data/sql_logs.tsv" // 預設檔案路徑
+    };
+    println!("Load File: {:?}", input_file);
 
-    // 定義 CSV 文件的讀取設定（tab 分隔）
+    // 2. 判斷檔案是否為 .tsv
+    if Path::new(input_file)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        != "tsv"
+    {
+        eprintln!("Error: The input file must have a .tsv extension.");
+        return Ok(());
+    }
+
+    // 3. 建立 DataFusion 的執行環境
+    let ctx = SessionContext::new();
+
+    // 4. 定義 CSV 的讀取選項 (tab 分隔，含標題)
     let csv_read_options = CsvReadOptions::new()
         .has_header(true)
-        .delimiter(b'\t')  // 指定為 tab 分隔
-        .file_extension("tsv"); // 如果文件不是 .csv，指定副檔名
+        .delimiter(b'\t')
+        .file_extension("tsv");
 
-    // 註冊 CSV 文件
-    ctx.register_csv("sql_logs", "data/sql_logs.tsv", csv_read_options)
+    // 5. 註冊 CSV 文件
+    ctx.register_csv("sql_logs", input_file, csv_read_options)
         .await?;
 
-    // SQL 查詢：統計每小時的 sql_type, client_host 出現次數
+    // 6. 使用 SQL 方法執行查詢
     let df = ctx
         .sql(
             "
             SELECT 
-                sql_type,
-                date_trunc('day', exec_time) AS exec_hour, 
-                COUNT(1) AS request_count
+                sql_type, 
+                date_trunc('day', exec_time) AS exec_day, 
+                COUNT(*) AS request_count
             FROM sql_logs
             GROUP BY sql_type, date_trunc('day', exec_time)
-            ORDER BY exec_hour, sql_type
+            ORDER BY exec_day, sql_type
             ",
         )
         .await?;
 
-    // 顯示查詢結果
+    // 7. 顯示結果
     df.show().await?;
     Ok(())
 }
